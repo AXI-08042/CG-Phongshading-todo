@@ -18,7 +18,23 @@
 ## 项目结构
 
 ```Plain Text
-
+├── index.html                # 入口页面，场景初始化与DOM配置
+├── shaders/                  # 着色器文件目录
+│   ├── box.vert              # 物体顶点着色器（传递法向量、纹理坐标、光源空间位置）
+│   ├── box.frag              # 物体片元着色器（光照、阴影、半透明计算核心）
+│   ├── depth.vert/depth.frag # 深度纹理生成着色器（ShadowMap专用）
+│   ├── skybox.vert/skybox.frag # 天空盒着色器
+│   └── lamp.vert/lamp.frag   # 光源物体着色器
+├── js/                       # 逻辑脚本目录
+│   ├── Phongshading.js       # 核心渲染逻辑（场景绘制、半透明物体渲染、矩阵变换）
+│   ├── configTexture.js      # 纹理配置脚本（创建纹理对象、加载纹理图片）
+│   ├── initShaders.js        # 着色器初始化脚本（编译、链接着色器程序）
+│   └── gl-matrix.js          # 矩阵运算库（提供向量、矩阵操作API）
+├── textures/                 # 纹理图片目录
+│   ├── cubeTexture.jpg       # 普通立方体纹理
+│   ├── planeTexture.jpg      # 地面纹理
+│   └── skybox/               # 天空盒纹理（6个方向）
+└── README.md                 # 项目说明文档（本文件）
 ```
 
 ## 环境要求
@@ -56,13 +72,18 @@
 - 新增2个uniform变量，控制透明效果：
 
     ```OpenGL Shading Language
-    
+    uniform float transparency;  // 透明度因子（0.0=完全透明，1.0=不透明）
+    uniform bool isTransparent;  // 半透明开关（true=启用，false=禁用）
     ```
 
 - 片元颜色输出逻辑：根据开关决定Alpha通道值：
 
     ```OpenGL Shading Language
-    
+    if (isTransparent) {
+    FragColor = vec4(resultColor, transparency);  // 启用透明
+    } else {
+    FragColor = vec4(resultColor, 1.0);           // 保持不透明
+    }
     ```
 
 #### （2）渲染逻辑（Phongshading.js）
@@ -70,13 +91,18 @@
 - 启用WebGL混合模式，配置混合公式：
 
     ```JavaScript
-    
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); // 标准Alpha混合
     ```
 
 - 半透明物体绘制：单独创建半透明立方体顶点数据，设置独立位置（如右移2单位），传递透明参数：
 
     ```JavaScript
-    
+    // 传递透明度参数
+    gl.uniform1f(gl.getUniformLocation(program, "transparency"), 0.5);
+    gl.uniform1i(gl.getUniformLocation(program, "isTransparent"), true);
+    // 绘制半透明立方体
+    gl.drawArrays(gl.TRIANGLES, 半透明物体顶点索引, transparentCubenumPoints);
     ```
 
 ### 2. 阴影与半透明的兼容性处理
@@ -84,7 +110,10 @@
 为避免半透明物体无阴影或阴影异常，在深度图生成阶段同步处理半透明物体：
 
 ```JavaScript
-
+// Phongshading.js 中生成深度纹理时，新增半透明物体深度绘制
+var transparentModel = mult(translate(2.0, 0.0, 0.0), mat4()); // 半透明物体模型矩阵
+gl.uniformMatrix4fv(gl.getUniformLocation(depthProgram,"u_ModelMatrix"), false, flatten(transparentModel));
+gl.drawArrays(gl.TRIANGLES, 半透明物体顶点索引, transparentCubenumPoints);
 ```
 
 ## 参数调整指南
@@ -128,4 +157,3 @@
 2. **透明纹理支持**：加载带Alpha通道的PNG图片作为半透明物体纹理，在`box.frag`中通过`texture(diffuseTexture, TexCoord).a`获取纹理自身透明度，与`transparency`叠加使用。
 
 3. **渲染顺序优化**：当场景中有多个透明物体时，按“从后到前”的顺序绘制（根据物体与相机的距离排序），避免透明物体间遮挡异常。
-> （注：文档部分内容可能由 AI 生成）
